@@ -84,6 +84,7 @@ class QWOPEnv(gym.Wrapper):
             driver=driver or find_chromedriver(),
             render_mode=render_mode,
             stat_in_browser=(render_mode == "browser"),
+            frames_per_step=6,  # ~10 actions/sec
             loglevel="INFO",
         )
         super().__init__(env)
