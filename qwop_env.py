@@ -84,6 +84,7 @@ class QWOPEnv(gym.Wrapper):
             driver=driver or find_chromedriver(),
             render_mode=render_mode,
             stat_in_browser=(render_mode == "browser"),
+            loglevel="INFO",
         )
         super().__init__(env)
         self.phase = phase
@@ -113,7 +114,7 @@ class QWOPEnv(gym.Wrapper):
             dt = time_now - self._time
             reward -= 0.001 * dt  # small time penalty to encourage faster running
 
-        if terminated and not info.get("success", False):
+        if terminated and not info.get("is_success", False):
             reward -= 1.0  # fell before reaching 100m
 
         return reward

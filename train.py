@@ -1,14 +1,10 @@
 """
-Train a PPO agent to play QWOP.
+Training an agent to play QWOP w/ PPO
 
-Two-phase approach:
-  Phase 1 (distance): Reward = forward progress only.
-                      Train until the agent can consistently reach 100m.
-                      Typically needs 3–10M steps (several hours).
+Phase 1 (distance): Reward = forward progress only.
+Phase 2 (speed): Reward = forward progress minus time cost.
+- Load phase 1 weights and fine-tune for faster running.
 
-  Phase 2 (speed):    Reward = forward progress minus time cost.
-                      Load phase 1 weights and fine-tune for faster running.
-                      Typically needs 1–3M additional steps.
 
 Usage:
   Phase 1 (start fresh):
@@ -41,9 +37,6 @@ PHASE_STEPS = {1: 5_000_000, 2: 2_000_000}
 class EpisodeStatsCallback(BaseCallback):
     """
     Prints per-episode results to the console and logs them to TensorBoard.
-
-    PPO's default logging is per-rollout (every n_steps), not per-episode,
-    so without this you'd have no visibility into how far the agent is running.
     """
 
     def __init__(self):
@@ -56,7 +49,7 @@ class EpisodeStatsCallback(BaseCallback):
             if not done:
                 continue
             dist = info.get("distance", 0.0)
-            success = info.get("success", False)
+            success = info.get("is_success", False)
             t = info.get("time", 0.0)
             self._distances.append(dist)
             self._successes.append(success)

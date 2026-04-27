@@ -1,0 +1,14 @@
+# claude
+.claude
+
+# pycache
+__pycache__
+
+# .venv
+venv
+
+# logs
+logs
+
+# models
+models
