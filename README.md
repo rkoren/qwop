@@ -37,8 +37,12 @@ python train.py
 # Phase 2 — fine-tune for speed
 python train.py --phase 2 --load models/phase1/phase1_final.zip
 
+# Gait training — reward alternating foot contacts scaled by distance
+python train_gait.py
+
 # Resume an interrupted run
 python train.py --load models/phase1/ppo_qwop_1000000_steps.zip
+python train_gait.py --load models/gait/ppo_qwop_gait_1000000_steps.zip
 ```
 
 Progress is printed per episode and logged to TensorBoard:
@@ -67,4 +71,5 @@ python play.py --model models/phase2/phase2_final.zip --episodes 10
 | `setup.py` | One-time setup: verify Chrome/chromedriver, patch QWOP |
 | `qwop_env.py` | Gymnasium environment wrapper with reward shaping |
 | `train.py` | PPO training with episode logging and checkpoints |
+| `train_gait.py` | Gait training with alternating foot-contact reward |
 | `play.py` | Load a saved model and watch it play |

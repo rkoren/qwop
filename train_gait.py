@@ -1,14 +1,9 @@
 """
-Training with some gait rewards.
+Training with alternating foot reward.
 
-Adds bonuses on top of distance:
-
-  alt     — rewards actually running (one foot up as the other go down)
-  stride  — rewards leg separation (left/right thigh angle difference)
-  lean    — rewards forward torso lean
-  flight  — rewards foot height alternation (one foot off the ground)
-
-for now bonuses are small relative to distance
+Give a bonus each time a foot makes contact with the ground (foot_y >= 8)
+and it's the opposite foot from the last contact. The bonus scales linearly
+with current distance.
 
 Usage:
     python train_gait.py
@@ -23,7 +18,6 @@ Monitor with TensorBoard:
 import argparse
 import os
 
-import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 
@@ -35,41 +29,50 @@ TOTAL_STEPS = 7_000_000  # more steps — gait shaping makes the problem harder
 # Observation layout: 12 parts × 5 values [pos_x, pos_y, angle, vel_x, vel_y]
 # Parts: torso(0) head(1) l_arm(2) r_arm(3) l_forearm(4) r_forearm(5)
 #        l_thigh(6) r_thigh(7) l_calf(8) r_calf(9) l_foot(10) r_foot(11)
-_TORSO_ANGLE  = 2
-_L_THIGH_ANGLE = 6 * 5 + 2   # 32
-_R_THIGH_ANGLE = 7 * 5 + 2   # 37
-_L_FOOT_Y      = 10 * 5 + 1  # 51
-_R_FOOT_Y      = 11 * 5 + 1  # 56
-_L_FOOT_VEL_Y  = 10 * 5 + 4  # 54
-_R_FOOT_VEL_Y  = 11 * 5 + 4  # 59
+_TORSO_X  = 0
+_L_FOOT_Y = 10 * 5 + 1  # 51
+_R_FOOT_Y = 11 * 5 + 1  # 56
+
+GROUND_Y = 8.0   # foot_y >= this → on the ground (confirmed from replay observation)
+ALT_BASE = 0.5   # bonus per alternating contact at distance 0
+ALT_SCALE = 0.1  # additional bonus per metre of distance
 
 
 class GaitQWOPEnv(QWOPEnv):
-    """QWOPEnv with gait-shaping bonuses layered on top of the distance reward."""
+    """Env that rewards alternating foot contacts, scaled by distance."""
+
+    def reset(self, **kwargs):
+        obs, info = super().reset(**kwargs)
+        self._last_foot: str | None = None  # 'L' or 'R'
+        self._l_was_down = float(obs[_L_FOOT_Y]) >= GROUND_Y
+        self._r_was_down = float(obs[_R_FOOT_Y]) >= GROUND_Y
+        return obs, info
 
     def step(self, action):
         obs, reward, terminated, truncated, info = super().step(action)
-        reward += _gait_bonus(obs)
+
+        l_down = float(obs[_L_FOOT_Y]) >= GROUND_Y
+        r_down = float(obs[_R_FOOT_Y]) >= GROUND_Y
+
+        l_contact = l_down and not self._l_was_down
+        r_contact = r_down and not self._r_was_down
+
+        distance = max(0.0, float(obs[_TORSO_X]))
+        step_value = ALT_BASE + ALT_SCALE * distance
+
+        if l_contact:
+            if self._last_foot == 'R':
+                reward += step_value
+            self._last_foot = 'L'
+        if r_contact:
+            if self._last_foot == 'L':
+                reward += step_value
+            self._last_foot = 'R'
+
+        self._l_was_down = l_down
+        self._r_was_down = r_down
+
         return obs, reward, terminated, truncated, info
-
-
-def _gait_bonus(obs: np.ndarray) -> float:
-    # Stride: reward angular separation between the two thighs
-    stride = abs(float(obs[_L_THIGH_ANGLE]) - float(obs[_R_THIGH_ANGLE]))
-
-    # Lean: reward forward torso lean (positive normalized angle = leaning toward finish)
-    lean = max(0.0, float(obs[_TORSO_ANGLE]))
-
-    # Flight: reward when feet are at different heights (one lifted = actual stride)
-    flight = abs(float(obs[_L_FOOT_Y]) - float(obs[_R_FOOT_Y]))
-
-    # Alternation: reward anti-phase foot swing — one foot rising as the other falls.
-    # Product of vertical velocities is negative when they oppose each other (true running),
-    # and positive when they move in unison (scoot/hop). Weighted highest as the core
-    # mechanical signature of a running gait.
-    alt = max(0.0, -(float(obs[_L_FOOT_VEL_Y]) * float(obs[_R_FOOT_VEL_Y])))
-
-    return 0.01 * stride + 0.005 * lean + 0.01 * flight + 0.03 * alt
 
 
 def train(args: argparse.Namespace) -> None:
